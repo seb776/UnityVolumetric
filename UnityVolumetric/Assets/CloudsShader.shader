@@ -6,9 +6,10 @@ Shader "Unlit/CloudsShader"
     }
     SubShader
     {
-        Tags { "RenderType"="Opaque" }
+        Tags { "RenderType"="Transparent" "Queue"="Transparent" }
         LOD 100
-        Cull Off
+        //Cull Off
+        Blend SrcAlpha OneMinusSrcAlpha
 
         Pass
         {
@@ -32,8 +33,10 @@ Shader "Unlit/CloudsShader"
                 UNITY_FOG_COORDS(1)
                 float4 vertex : SV_POSITION;
                 float3 worldPos : TEXCOORD1;
+                float4 screenPos : TEXCOORD2;
             };
 
+            UNITY_DECLARE_DEPTH_TEXTURE(_CameraDepthTexture);
             sampler2D _MainTex;
             float4 _MainTex_ST;
 
@@ -47,6 +50,7 @@ Shader "Unlit/CloudsShader"
                 o.worldPos = mul(unity_ObjectToWorld, v.vertex).xyz;
                 o.uv = TRANSFORM_TEX(v.uv, _MainTex);
                 UNITY_TRANSFER_FOG(o,o.vertex);
+                o.screenPos = ComputeScreenPos(o.vertex);
                 return o;
             }
 
@@ -86,7 +90,12 @@ Shader "Unlit/CloudsShader"
 
             float map(float3 p)
             {
-                return -sdCube(p, _CloudBoxScale*0.52) + noise(p*5.);
+                return -sdCube(p, _CloudBoxScale*0.52);
+            }
+
+            float sampleDensity(float3 p)
+            {
+                return saturate((noise(p+float3(_Time.y, 0., 0.))+ noise(p * 2.))/2.-.4);
             }
 
             fixed4 frag (v2f i) : SV_Target
@@ -98,19 +107,31 @@ Shader "Unlit/CloudsShader"
                 float3 viewDir = -normalize(_WorldSpaceCameraPos.xyz - i.worldPos.xyz);
                 col.xyz = viewDir * 0.5 + 0.5;
 
+                
+                float sceneZ = LinearEyeDepth(SAMPLE_DEPTH_TEXTURE_PROJ(_CameraDepthTexture, UNITY_PROJ_COORD(i.screenPos)));
+                float objectZ = i.screenPos.w;
+                float depth = sceneZ - objectZ;
+
+                float3 acc = 0.;
+                float totalDensity = 0.;
                 float3 p = i.worldPos.xyz;
-                for (float i = 0.; i < 128.; ++i)
+                const float stepSize = 8. / 100.;
+                for (float j = 0.; j < 128. && distance(_WorldSpaceCameraPos.xyz, p) < sceneZ; ++j)
                 {
                     float dist = map(p - _CloudBoxPosition);
                     if (dist < 0.01)
                     {
-                        col.xyz = i/128.;
+                        col.xyz = j/128.;
                         break;
                     }
-                    p += viewDir * dist;
+                    float sampleCloud = sampleDensity(p);
+                    totalDensity += sampleCloud * stepSize;
+                    p += viewDir * stepSize;//dist;
                 }
-
-
+                col = exp(-totalDensity);
+                col.a = 1. - col.a;
+                col.xyz = 1.;
+                //col.a = 1.;
                 return col;
             }
             ENDCG
