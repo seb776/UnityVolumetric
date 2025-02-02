@@ -98,6 +98,25 @@ Shader "Unlit/CloudsShader"
                 return saturate((noise(p+float3(_Time.y, 0., 0.))+ noise(p * 2.))/2.-.4);
             }
 
+            float getLight(float3 p, float3 viewDir)
+            {
+                float totalDensity = 0.0f;
+                const float stepSize = 8. / 20.;
+                for (float j = 0.; j < 32.; ++j)
+                {
+                    float dist = map(p - _CloudBoxPosition);
+                    if (dist < 0.01)
+                    {
+                        break;
+                    }
+                    float sampleCloud = sampleDensity(p);
+                    totalDensity += sampleCloud * stepSize;
+                    p += viewDir * stepSize; //dist;
+                }
+                return exp(-totalDensity);
+
+            }
+
             fixed4 frag (v2f i) : SV_Target
             {
                 // sample the texture
@@ -116,21 +135,28 @@ Shader "Unlit/CloudsShader"
                 float totalDensity = 0.;
                 float3 p = i.worldPos.xyz;
                 const float stepSize = 8. / 100.;
+                float3 lightEnergy = 0.;
+                float transmittance = 1.;
                 for (float j = 0.; j < 128. && distance(_WorldSpaceCameraPos.xyz, p) < sceneZ; ++j)
                 {
-                    float dist = map(p - _CloudBoxPosition);
+        float dist = map(p - _CloudBoxPosition);
                     if (dist < 0.01)
                     {
                         col.xyz = j/128.;
                         break;
                     }
+        float lightTransmittance = getLight(p, _WorldSpaceLightPos0);
                     float sampleCloud = sampleDensity(p);
-                    totalDensity += sampleCloud * stepSize;
+        lightEnergy += sampleCloud * stepSize * transmittance * lightTransmittance;
+        transmittance *= exp(-sampleCloud * stepSize * .2);
                     p += viewDir * stepSize;//dist;
-                }
-                col = exp(-totalDensity);
-                col.a = 1. - col.a;
-                col.xyz = 1.;
+
+    }
+//                col = exp(-totalDensity);
+    col.a = transmittance * (.3 + length(lightEnergy));
+    
+    
+    col.xyz = lightEnergy;
                 //col.a = 1.;
                 return col;
             }
