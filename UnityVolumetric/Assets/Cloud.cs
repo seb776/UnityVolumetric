@@ -3,16 +3,15 @@ using UnityEngine;
 [ExecuteInEditMode]
 public class Cloud : MonoBehaviour
 {
-    private Material _cloudMaterial;
-
-    void Start()
-    {
-        _cloudMaterial = this.gameObject.GetComponent<MeshRenderer>().material;
-    }
+    public Material CloudMaterial;
 
     void Update()
     {
-        _cloudMaterial.SetVector("_CloudBoxPosition", this.gameObject.transform.position);
-        _cloudMaterial.SetVector("_CloudBoxScale", this.gameObject.transform.lossyScale);
+        if (!CloudMaterial)
+        {
+            CloudMaterial = this.gameObject.GetComponent<MeshRenderer>().sharedMaterial;
+        }
+        CloudMaterial.SetVector("_CloudBoxPosition", this.gameObject.transform.position);
+        CloudMaterial.SetVector("_CloudBoxScale", this.gameObject.transform.lossyScale);
     }
 }
