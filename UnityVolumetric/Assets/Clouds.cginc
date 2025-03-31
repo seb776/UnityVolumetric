@@ -99,6 +99,6 @@ void ProcessClouds_float(float4 inputCol, float depth, float3 cameraPosWS, float
 	{
 		outputCol = inputCol.xyz;
 	}
-	
+	// CACA
 	//outputCol = depth / 10.;
 }
