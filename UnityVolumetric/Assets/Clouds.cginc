@@ -1,3 +1,6 @@
+uniform float4 _WorldSpaceLightPos0;
+uniform float3 _LightColor0;
+
 // https://gist.github.com/patriciogonzalezvivo/670c22f3966e662d2f83
 float mod289(float x){return x - floor(x * (1.0 / 289.0)) * 289.0;}
 float4 mod289(float4 x){return x - floor(x * (1.0 / 289.0)) * 289.0;}
@@ -68,7 +71,26 @@ return true;
 
 float sampleDensity(float3 p)
 {
-	return saturate((noise(p+float3(_Time.y, 0., 0.))+ noise(p * 2.))/2.-.4);
+	return saturate(pow(saturate((noise(p*.2+float3(_Time.y*.1, 0., 0.))+ noise(p * .3))/2.-.55),1.5)*5.);
+}
+
+float sampleLuminosity(float3 startPos, float3 dirToLight, float dirMax) 
+{
+	const float iterationCount = 16.;
+	float3 endPos = startPos + dirToLight * dirMax;
+
+	float accLuminosity = 1.0;
+	const float stepSize = distance(startPos, endPos) / iterationCount;
+	float3 p = startPos;//+dirToLight * (.2 * (noise(startPos * 100. + _Time.y) - .5));
+	for (float i = 0.; i < iterationCount && distance(startPos, p) < dirMax; ++i)
+	{
+		float curDensity = sampleDensity(p);
+		accLuminosity = lerp(accLuminosity, 0.0, curDensity*stepSize);
+		if (accLuminosity < 0.01)
+			break;
+		p += dirToLight * stepSize;//*(.2 * (noise(p * 100. + _Time.y) - .5)); // Small random offset to mitigate banding
+	}
+	return saturate(accLuminosity);
 }
 
 void ProcessClouds_float(float4 inputCol, float depth, float3 cameraPosWS, float3 viewDirWS, float3 cloudBoxPosition, float3 cloudBoxScale,  out float3 outputCol)
@@ -84,13 +106,26 @@ void ProcessClouds_float(float4 inputCol, float depth, float3 cameraPosWS, float
 			startPos = cameraPosWS + viewDirWS * tmin;
 
 		float3 endPos = cameraPosWS + viewDirWS * tmax;
-		float3 p = startPos + viewDirWS * noise(startPos*1000.+_Time.y)*.5; // Random offset to smoothen raymarching artifact
+		float3 p = startPos +viewDirWS * noise(startPos * .05 + _Time.y) * 10000.5; // Random offset to smoothen raymarching artifact
+		p = endPos - viewDirWS * noise(startPos * 100.+ _Time.y) * .5;
+		viewDirWS = -viewDirWS;
 		const float iterationCount = 32.;
+
 		const float stepSize = distance(startPos, endPos) / iterationCount;
-		for (float i = 0.; i < iterationCount && distance(cameraPosWS, p) < depth; ++i)
+		//&& distance(cameraPosWS, p) < depth
+		for (float i = 0.; i < iterationCount; ++i)
 		{
 			float density = sampleDensity(p);
-			color = lerp(color, .5, pow(density, 1.5));
+			float tminLum = 0.0;
+			float tmaxLum = 0.0;
+			float3 cloudColor = _LightColor0;
+			if (Raytracing_line_box(p - cloudBoxPosition, _WorldSpaceLightPos0.xyz, cloudBoxScale, tminLum, tmaxLum))
+			{
+				cloudColor = lerp(.02,1.,sampleLuminosity(p, _WorldSpaceLightPos0.xyz, tmaxLum))*_LightColor0;
+				//cloudColor = saturate(2.- tmaxLum * .12);
+			}
+//			float3 cloudColor = 0.5;
+			color = lerp(color, cloudColor, density);
 			p += viewDirWS * stepSize;
 		}
 		outputCol = color;
@@ -99,6 +134,5 @@ void ProcessClouds_float(float4 inputCol, float depth, float3 cameraPosWS, float
 	{
 		outputCol = inputCol.xyz;
 	}
-	// CACA
 	//outputCol = depth / 10.;
 }
